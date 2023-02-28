@@ -63,8 +63,8 @@ u,s,v = np.linalg.svd(A)
 c = u.T@b
 w = np.diag(1/s)@c
 x = v.conj().T@w
-print("Wout == ", Wout)
+print("Wout == ",np.shape(Wout))
 print()
-print("x == ", x.T)
+print("x == ", np.shape(x.T))
 # run the trained ESN in a generative mode. no need to initialize here, 
 # because x is initialized with training data and we continue from there.
