@@ -1,0 +1,299 @@
+เริ่มแรกจะมีการกำหนด path = 'datasets'
+และจะีการเก็บค่าต่างๆซื้อมีด้วยกัน 7 ค่าคือ 
+dataset, Nu, error_function, 
+optimization_problem, TR_indexes, VL_indexes, TS_indexes
+ซึ่งค่าทั้ง 7 นี้จะเก็บจากฟังชั่น  load_MG โดยจะส่งค่า path, mse เข้าไป
+
+ฟังชั่น load_MG หลังจากรับบค่าเข้ามาแล้ว 
+ก็จะมีการเก็บค่าส data โดยจะให้ data = loadmat(os.path.join(path, 'MG.mat'))
+ซึ่งเป็นการเก็บ dataset เข้ามาเพื่อที่จะทำค่าไปทดลองต่อไป
+จากนั้นทำการเก็บค่า dataset โดยจะเเบ่งเป็น name ซึ่งจะทำการเก็บชื่อ "MG"  
+input ซึ่งเป็นการเก็บค่า input ของ dataset ที่มีจำนวณ 1 row 9999 column
+targets ซึ่งเป็นการเก็บค่า targets ของ dataset ที่มีจำนวณ 1 row 9999 column
+และมีการรับ ค่า nu = dataset.inputs[0].shape[0] ซึ่งเป็นการกำหนด input dimension
+ซึ่ง nu = 1
+error_function เก็บ model evaluation ซึ่งก็คือ 
+ฟั่งชั่นก์ การวัดเน้นทีความน่าเชือถือของตัวเลข
+และจากนั้นก็จะมีการกำหนดช่วง ของ TR_indexes,VL_indexes,TS_indexes
+โดยจะเก็บช่วงเป็น range(4000),range(4000,5000),range(5000,9999) ตามลำดับ
+และ trurn ค่า dataset, Nu, error_function, 
+optimization_problem, TR_indexes, VL_indexes, TS_indexes ไปยัง main
+
+จากนั้นจะทำการกำหนด configs โดยจะส่งค่า list(TR_indexes) + list(VL_indexes) ซึ่งเป็นช่วงที่กำหนดเป็น list
+ไปยังconfig_MG ฟังชั่น
+
+config_MG
+ซึ่งในฟังชั่นนี้จะเป็นการเซ็ตค่าต่างๆ
+    configs.rhos = 0.9 # set spectral radius 0.9 for all recurrent layers
+    configs.lis = 1.0 # set li 1.0 for all recurrent layers
+    configs.iss = 0.1 # set insput scale 0.1 for all recurrent layers
+    
+    configs.IPconf = Struct()
+    configs.IPconf.DeepIP = 0 # deactivate pre-train
+
+    configs.reservoirConf = Struct()
+    configs.reservoirConf.connectivity = 1 # connectivity of recurrent matrix
+    
+    configs.readout = Struct()
+    configs.readout.trainMethod = 'SVD' # train with singular value decomposition (more accurate)
+    configs.readout.regularizations = 10.0**np.array(range(-16,-1,1))
+จากนั้น return configs ออกมา
+
+กำหนดจำนวน units Nr =100
+กำหนดจำนวน layers = 2
+reg = 0.0
+transient = 100
+
+deepESN = DeepESN(Nu, Nr, Nl, configs) 
+จะทำการส่งค่า (Nu, Nr, Nl, configs) ไปยังฟังชั่น DeepESN และเก็บเข้ามายังใน deepESN
+ซึ่งจะเข้าไปยังฟั่งชั่นก์ __init__
+โดยกำหนดค่า  rhos = np.array(configs.rhos) 
+lis = np.array(configs.lis) 
+iss = np.array(configs.iss)
+IPconf = configs.IPconf 
+reservoirConf = configs.reservoirConf 
+ซึ่งค่าเหล่านี้ถูกเซ็ตไว้ใน configs แล้ว
+
+จากนั้นจะมีเงื่อนไง len(rhos.shape) == 0,len(lis.shape) == 0,len(iss.shape) == 0
+โดยเงื่อนไขเหลานี้จะทำการ set ค่า rhos,lis,iss ใหม่
+โดยจะมีการใช้ npm.repmat(a, m, n) โดยจะเป็นฟังชั่นในการเพิ่มมิติ m*n โดยต่ำแหน่งที่เพิ่มมาจะเป็น a
+ตย. 
+a1 = np.arange(4)
+np.matlib.repmat(a1, 2, 2)
+>>>array([[0, 1, 2, 3, 0, 1, 2, 3],
+          [0, 1, 2, 3, 0, 1, 2, 3]])
+
+
+จากนั้น 
+        self.W = {} # recurrent weights
+        self.Win = {} # recurrent weights
+        self.Gain = {} # activation function gain
+        self.Bias = {} 
+จะทำการกำหนดเซ็ตว่างต่างโดยจะ มี ค่า w คือ weigths, Win คือ weights input, Gain, Bias
+self.Nu = Nu # number of inputs
+        self.Nr = Nr # number of units per layer
+        self.Nl = Nl # number of layers
+        self.rhos = rhos.tolist() # list of spectral radius
+        self.lis = lis # list of leaky rate
+        self.iss = iss # list of input scale
+
+        self.IPconf = IPconf   
+        
+        self.readout = configs.readout
+               
+และค่าต่างๆเหลานี้ตามที่ส่งเข้ามา 
+
+จากเงื่อนไงแรก reservoirConf.connectivity < 1 
+เนื่องจากเรากำหนด reservoirConf.connectivity == 1 จึงไม่ได้เข้าเงื่อนไขนี้
+ซึ่งเป็นเงื่อนไขถ้ามีการกระจายกันของ recurrent weights
+
+จะมาเข้า else แทน ซึ่งจะเป็น full-connected recurrent weights
+for layer in range(Nl):
+                self.W[layer] = np.random.uniform(-1,+1, size = (Nr,Nr))
+
+ซึ่งจะเข้าลูปfor ตั้งแต่ 0 < Nl ซึ่งก็คือ 2
+และทำการเก็บค่า W[0]และ W[1] โดยจะมีช่วง -1 ถึง 1 โดยมีจำนวน (Nr,Nr) เพราะเป็น array 2 มิติ
+
+จากนั้นก็จะมีอีกลูป
+for layer in range(Nl):
+            target_li = lis[layer]
+            target_rho = rhos[layer]
+            input_scale = iss[layer]
+
+จะมีการ set ค่า target_li,target_rho,input_scale
+ซึ่งทั้ง layer ที่ 0 และ 1  ค่า target_li,target_rho,input_scale = 1.0,0.9,0.1 ตามลำดับไม่เปลี่ยนแปลง
+
+จากนั้จะมีเงื่อไน if layer == 0 ก็จะเก็บค่า
+ Win[0] = np.random.uniform(-input_scale, input_scale, size=(Nr,Nu+1))
+ เก็บค่า Win[0] โดยจะมีช่วง -input_scale ถึง input_scale โดยมีจำนวน (Nr,Nu+1)
+else
+self.Win[layer] = np.random.uniform(-input_scale, input_scale, size=(Nr,Nr+1))
+เก็บค่า Win[1] โดยจะมีช่วง -input_scale ถึง input_scale โดยมีจำนวน (Nr,Nr+1)
+
+ws = (1-target_li) * np.eye(self.W[layer].shape[0], self.W[layer].shape[1]) + target_li * self.W[layer]
+ซึ่ง ws มาจาก สมการ 
+x(t) == (1-a[l])*x[l]*(t-1) + a[l]*tanh(W[l]*x[l-1](t) +W[l]*x[l]*(t-1))
+#เขียนอ้างอิงด้วย
+จากนั้น 
+eig_value,eig_vector = np.linalg.eig(Ws)  
+eig_value จะเก็บค่า array ของ Ws
+eig_vector จะเก็บค่า vactor
+
+actual_rho = np.max(np.absolute(eig_value))
+actual_rho จะเก็บค่ามากที่สุดของ np.absolute(eig_value) ซึ่งคือค่า eig_value 
+ที่มากที่สุดที่ผ่าน absolute
+
+Ws = (Ws *target_rho)/actual_rho
+จะจัดค่า Ws ใหม่         
+
+self.W[layer] = (target_li**-1) * (Ws - (1.-target_li) * np.eye(self.W[layer].shape[0], self.W[layer].shape[1]))
+โดย จะเก็บค่า W[0] และ W[1]     
+
+self.Gain[layer] = np.ones((Nr,1))
+self.Bias[layer] = np.zeros((Nr,1)) 
+Gain[0], [1] จะเก็บค่า array 2 มิติ row = Nr column = 1 โดยค่าข้างในจะเป็น 1 ทั้งหมด
+Bias[0] ,[1] จะเก็บค่า array 2 มิติ row = Nr column = 1 โดยค่าข้างในจะเป็น 0 ทั้งหมด
+
+ต่อมาใน main 
+states = deepESN.computeState(dataset.inputs, deepESN.IPconf.DeepIP)
+จะทำการส่งค่า dataset.inputs, deepESN.IPconf.DeepIP ไปยัง conputeState 
+โดยค่า dataset.inputs เป็น dataset และ deepESN.IPconf.DeepIP คือค่า  deactivate pre-train โดย config ตั้งไว้เป็น 0
+ในฟังชั่น  computeState นั้น ก็จะมีเงื่อนไข if self.IPconf.DeepIP and DeepIP: และ else 
+เนื่องจากทั้ง self.IPconf.DeepIP = 0 และ DeepIP = 0 ทั้งคู่หรือเงื่อนไขเป็นเท็จทั้งคู่ จึงไปเข้าเงื่อนไข else 
+ซึ่งใน else นั้นก็จะมีการสร้างค่า states เป็น list ว่าง 
+states = []
+
+จากนั้นก็จะทำการเข้าลูป โดย len(inputs) = 1
+
+for i_seq in range(len(inputs)):
+    states.append(self.computeGlobalState(inputs[i_seq], initialStates))
+    #จะเป็นการเพิ่มค่า list เข้าไปใน states โดยจะเพิ่ม datasets จาก computeGlobalState โดยจะทำการส่งค่า inputs[0], initialStates
+    โดย input[0 ] จะเป็นค่าของ dataset ที่รับเข้ามาและ initialStates  ที่ถูกกำหนดไว้เป็น None 
+
+ใน ฟั่งชั่น computeGlobalState ก็จะรับค่า inputs[i_seq], initialStates เข้ามา
+จากกนั้นก็จะมีการ กำหนดค่า state = np.zeros((self.Nl*self.Nr,input.shape[1])) โดยเก็บเข้ามาเป็น array 2 มิติโดยค่าข้างในจะเป็น 0 ทั้งหมดโดยมี row =200 และ column = 9999
+และกำหนด initialStatesLayer = None
+หลังจากนั้นก็จะทำการวนลูป
+ range(self.Nl) จะเท่ากับ 100  ครั้ง
+for layer in range(self.Nl):
+            if initialStates is not None:
+            #เนื่องจากค่า initialStates = Noneจึงไม่ได้เข้าเงื่อนไขนี้
+                initialStatesLayer = initialStates[(layer)*self.Nr: (layer+1)*self.Nr,:]      
+                   
+            
+
+            state[(layer)*self.Nr: (layer+1)*self.Nr,:] = self.computeLayerState(input, layer, initialStatesLayer, 0)    
+            โดย state จะเก็บค่าเริ่มตัวที่ 200 ถึง 9999 โดยจะเก็บมาจากค่า ของ computeLayerState ที่ส่งค่า input, layer, initialStatesLayer, 0 ไปยังฟังก์ชั่น
+            input = state[(layer)*self.Nr: (layer+1)*self.Nr,:]   
+            และจากนั้น input ก็ทำการเก็บค่าของ state
+        return state
+
+ในส่วนของฟังก์ชั่น computeLayerState หลังจากรับค่า input, layer, initialStatesLayer, 0 เข้ามานั้น 
+กำหนดค่า state = np.zeros((self.Nr, input.shape[1]))  โดยเป็น array 2 มิติ มีค่าข้างในเป็น 0 ทั้งหมด row = 100 column= 9999 
+จากนั้นก็จะเข้าเงื่อนไข if เนื่อง จากกำหนด initialStatesLayer = None เอาไว้ช่วงเเรก
+if initialStatesLayer is None:
+            initialStatesLayer = np.zeros(state[:,0:1].shape)
+            #initialStatesLayer ก็จะทำการเก็บค่า อาเรย์ 2 มิติ ข้างในเป็น 0  โดยจะมีค่า row =100 column = 1
+            
+        
+        input = self.Win[layer][:,0:-1].dot(input) + np.expand_dims(self.Win[layer][:,-1],1) 
+        #input ก็จะเก็บ ค่า Win ซึง Win layer ที่ 0 ก็จะเก็บค่า row มา 100 แถว column จะยังเป็น 1 อยู่ แล้วนำมา dot กับ ค่า input แล้ว + กับ การexpand_dims Win layer ที่ 0 [:,-1]กับ 1
+        ซึ่งจะทำให้ input มีrow =100 column = 9999
+ต่อมาจะเข้าเงื่อนไข if DeepIP: และ else แต่เนื่องจากเรากำหนด DeepIP = 0 ไว้ตอนแรกจึงเข้าไปยังเงื่อนไข else
+ซึ่งในเงื่อนไข จะมีการเก็บค่า state 
+state[:,0:1] = (1-self.lis[layer]) * initialStatesLayer + self.lis[layer] * 
+np.tanh( np.multiply(self.Gain[layer], self.W[layer].dot(initialStatesLayer) + input[:,0:1]) + self.Bias[layer])
+จะมีการเก็บค่าเข้ามา row =100 column = 9999 
+โดยค่าข้างในเกิดจาก 1 - self.lis[layer](โดย self.lis[layer] เท่ากับ 1 จากการกำหนดไว้ใน config ) คูณกับ 
+initialStatesLayer + self.lis[layer] ซึ่งก็คือค่าของ initialStatesLayer ที่มี row = 100 column =1 และค่าข้างในเป็น 0 ทั้งหมดโดยมี และนำมาบวกกับ 1 ของ lis
+จากนั้นก็นำมาคูณกับการหา tanh ของ np.multiply( self.Gain[layer], self.W[layer].dot(initialStatesLayer) + input[:,0:1]) บวกกับ self.Bias[layer]
+np.multiply จะเป็นการคูณกันของ self.Gain[layer] ที่มี row = 100 column = 1 โดยค่าข้างในจะเป็น 1 ทั้งหมด และนำมา multiply กับ 
+self.W[layer].dot(initialStatesLayer) + input[:,0:1]
+ซึ่งก็คือค่าของ self.W[layer] dot กับ ค่า initialStatesLayer และหลังจากนั้นบวกกับค่า input[:,0:1]
+โดย W จะมี row =100 column = 100 คูณกับ initialStates ที่มี row = 100 column =1  จากนั้น + input[:,0:1] ที่มี row =100 column = 9999
+
+หลังจากนั้นจะเข้าลูป for t in range(1,state.shape[1]) ซึ่งจะวนตั้งแต่ 1 ถึง state.shape[1] = 9999
+ในลูปก็จะมีเงื่อนไข if else ซึ่งก็คือ if DeepIP: และ else
+แต่เนื่องจากเรากำหนดให้ DeepIP =0 แต่เรกจึงเข้าเงื่อนไข else แทน
+ซึ่งข้างในก็จะมีการเก็บค่า state ซึ่ง state[:,t:t+1] = (1-self.lis[layer]) * state[:,t-1:t] + self.lis[layer] * np.tanh( np.multiply(self.Gain[layer], self.W[layer].dot(state[:,t-1:t]) + input[:,t:t+1]) + self.Bias[layer])
+ซึ่งจะมีการเก็บจากเงื่อนไขก่อนหน้าแต่จะไล่ t ไปตั้งแต่ 1 ถึง 9999
+
+จากนั้นก็จะจบฟังก์ชั่นและ return ค่า state ส่งกลับไปยัง ฟังชั่น computeGlobalState
+
+ส่วนต่อมาใน main ก็จะมีการหาค่า train โดยจะแบ่งเป็นดังนี้
+
+train_states = select_indexes(states, list(TR_indexes) + list(VL_indexes), transient)
+ค่าของ train_states นั้นก็จะมาจากฟังก์ชั่น select_indexes ที่ส่งค่า states, list(TR_indexes) + list(VL_indexes), transient
+ไปซึ่ง ค่า state มาจากฟังชั่นก่อนหน้าๆที่เราหามา list(TR_indexes) + list(VL_indexes) ส่วนค่านี้ list(TR_indexes) คือค่า list 1 ถึง 3999 ส่วน list(VL_indexes) ค่า list 4000 ถึง 9999
+ซึ่งเมื่อรวมกันเเล้ว ก็จะมีค่า 1 ถึง 4999 ส่วนค่า transient เรากำหนดไว้เป้น 100
+
+ในฟังชั่นก์ select_indexes 
+ก็จะมีเงื่อนไข if 
+if len(data) == 1: เนื่องจาก len(data)== 1 จึงได้เข้าเงื่อนไขนี้
+ซึ่งจพมีการ return ค่า [data[0][:,indexes][:,transient:]] ออกมาเป็น list ซึ่งข้างในจะ เป็นค่า row = 200 column = 4900
+ต่อมา 
+train_targets = select_indexes(dataset.targets, list(TR_indexes) + list(VL_indexes), transient)
+ก็จะมีการส่งค่า dataset.targets, list(TR_indexes) + list(VL_indexes), transient
+ซึ่งส่วนจะส่งค่า data ในส่วนของ target ไป และ list(TR_indexes) + list(VL_indexes) และค่า transient 100
+ก็จะ return ค่าออกมา เป็น row = 1 และ column = 4900
+ต่อมาในส่วน test
+test_states = select_indexes(states , TS_indexes)
+ก็จะส่งค่า states และ TS_indexes ไปยังฟังก์ชั่น select_indexes 
+ก็จะมีการ return ค่าออกมาเป็น row = 200 column = 4999
+และสุดท้าย
+test_targets = select_indexes(dataset.targets, TS_indexes) 
+ก็จะมีการ return ค่าออกมาเป็น row = 1 column = 4999
+
+
+ต่อมาก็จะเจอในส่วนของ  trainReadout ก็จะมีการเรียกใช้ฟังก์ชั่น trainReadoutโดยส่ง train_states, train_targets, regไป
+deepESN.trainReadout(train_states, train_targets, reg)
+โดย reg=0.0 และ train_states, train_targets คือค่าใน dataset ที่เก็บมาก่อนหน้า
+ในฟังชั่นก trainReadout นั้น
+เริ่มก็จะมีการกำหนดค่า 
+trainStates = np.concatenate(trainStates,1)
+ซึ่งnp.concatenate คือการนำอาเรย์มาต่อกันเป็นแนวตั้งถ้าไม่ได้กำหนด axis
+จากนั้น trainStates ก็จะเก็บค่าการต่อ array trainStates กับ 1 ซึ่งจะได้ค่า row  =200 column = 4900
+
+trainTargets = np.concatenate(trainTargets,1)
+ส่วน trainTargets ก็จะมี ค่า row =1 column = 4900
+ต่อมา 
+X = np.ones((trainStates.shape[0]+1, trainStates.shape[1]))
+X ก็จะเก็บค่า array 2 มิติ โดยมีrow = 201 column = 4900 โดยค่าข้างในทั้งหมดจะเป้น 1
+จากนั้น ค่า X[:-1,:] ก็จะเก็บค่า  trainStates   โดยจะใส่ตั้งแต่ row ที่ 1 ถึง 200 จาก 201 และ column ทั้งหมด
+
+และให้ trainStates = X
+
+ต่อมาจะเข้าเงื่อนไข if else ซึ่งจะเป็นเงื่อนไขหาเราจะเลือกใช้วิธีอะไรระหว่าง SVD กับ Linear
+if self.readout.trainMethod == 'SVD' or else 
+เนื่องจากใน config เรา set configs.readout.trainMethod = 'SVD' จึงเข้าเงื่อนไข if
+ซึ่งในเงื่อนไขก็จะมี
+U, s, V = np.linalg.svd(trainStates, full_matrices=False);  
+ซึ่งเป็น method ของการคำนวณนี้ เราก็จะแบ่งแยก trainStates ออกเป็นสามส่วนด้วยกันเป็น array เป็น array ซึ่งจะเเบ่งเป้น
+V   row = 201 column = 4900
+s   row = 201 column = 1
+U   row = 201 column = 201
+
+            s = s/(s**2 + lb)
+            
+        หลังจากนั้นก็จะหาค่า Wout ออกมาโดยทำการ    
+            self.Wout = trainTargets.dot(np.multiply(V.T, np.expand_dims(s,0)).dot(U.T));
+
+ซึ่งค่า Wout เกิดจาก ค่าของ trainTargets dot กับ (การคูณกันของ V.T(V ทรานสโพส) กับ np.expand_dims(s,0) ใช้ np.expand_dims เพื่อทำให้่ s เป็น array 2 มิตินำมา dotกับ U.T(U ทรานสโพส) )
+ซึ่งค่าที่ได้มาเป็น array 2 มิติ row = 1 column = 201 
+จากนั้นก็ออกฟังชั่นมา ยังmain 
+ก็จะมีการ train ค่าต่างๆดังนี้
+
+train_outputs = deepESN.computeOutput(train_states)
+ก็จะมีการส่งค่า train_state เข้าไปยังฟังก์ชั่น computeOutput
+ซึ่งในฟังก์ชั่นก็จะมี การสร้างค่า state 
+state = np.concatenate(state,1)
+และนำค่า state มาต่อ array เพิ่มแนวตั้ง
+ทำให้ row = 200 column = 4900
+จากนั้นจะ return ค่า Wout ซึ่งก็คือค่าของ self.Wout[:,0:-1].dot(state) + np.expand_dims(self.Wout[:,-1],1)
+
+
+ต่อมา 
+train_error = error_function(train_outputs, train_targets)
+ก็จะหาค่า    train_error จาก error_function ที่เรา import มา โดยส่งค่า train_outputs, train_targets ไป
+
+print('Training ACC: ', np.mean(train_error), '\n')
+จากนั้นก็จะ print ค่าค่าเฉลี่ย ของ    train_error
+
+ต่อมา หาค่า test_outputs 
+
+test_outputs = deepESN.computeOutput(test_states)
+ก็จะส่งค่า test_states ไปยังฟังก์ชั่น computeOutput 
+ก็จะมีการ return Wout ออกมาเหมือกกันแต่ค่า state มาต่อ array เพิ่มแนวตั้ง
+ทำให้ row = 200 column = 4999
+และก็หาค่า test_error จากerror_function โดยทำการส่ง test_outputs, test_targets ไป
+test_error = error_function(test_outputs, test_targets)
+
+    
+print('Test ACC: ', np.mean(test_error), '\n')
+และก็ print ค่า mean ของ test_error ออกมา
+
+
+
+
+
+
